@@ -1,0 +1,55 @@
+import os
+import numpy as np
+import cv2
+from sklearn.model_selection import train_test_split
+from sklearn import svm
+from sklearn.metrics import accuracy_score
+
+data_dir = "C:\\NewML\\MachineLearning\\env\\archive\\test"
+train_data_dir = os.path.join(data_dir, "test")
+
+def load_data(data_dir):
+    # Load and preprocess your data
+    X = []
+    y = []
+    common_image_size = (128, 128)  # Set the desired size (width, height)
+
+    for label in os.listdir(data_dir):
+        label_dir = os.path.join(data_dir, label)
+        if os.path.isdir(label_dir):
+            for filename in os.listdir(label_dir):
+                image = cv2.imread(os.path.join(label_dir, filename))
+                if image is not None and not image.size == 0:
+                    image_resized = cv2.resize(image, common_image_size)
+                    X.append(image_resized)
+                    y.append(1 if label == "weapon" else 0)
+
+    X = np.array(X)
+    y = np.array(y)
+
+    return X, y
+
+def preprocess_data(X):
+    # Flatten and normalize the data
+    X = X.reshape(X.shape[0], -1)
+    X = X / 255.0  # Normalize pixel values to the range [0, 1]
+    return X
+
+if __name__ == "__main__":
+    # Load data
+    X, y = load_data(train_data_dir)
+
+    # Preprocess data
+    X = preprocess_data(X)
+
+    # Split the data into train and validation sets
+    X_train, X_validation, y_train, y_validation = train_test_split(X, y, test_size=0.2, random_state=42)
+
+    # Create and train the SVM classifier
+    clf = svm.SVC(kernel='linear', C=1)
+    clf.fit(X_train, y_train)
+
+    # Evaluate the model on the validation set
+    y_pred = clf.predict(X_validation)
+    final_accuracy = accuracy_score(y_validation, y_pred)*100
+    print("Final Validation Accuracy:", final_accuracy)

@@ -1,0 +1,78 @@
+import cv2
+import os
+import numpy as np
+from hmmlearn import hmm
+
+# Function to load and preprocess images
+def load_and_preprocess_images(image_directory, width, height):
+    image_data = []
+    for subdirectory in os.listdir(image_directory):
+        subdirectory_path = os.path.join(image_directory, subdirectory)
+        if os.path.isdir(subdirectory_path):
+            for filename in os.listdir(subdirectory_path):
+                image_path = os.path.join(subdirectory_path, filename)
+                image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+                if image is not None and not image.size == 0:
+                    image = cv2.resize(image, (width, height))
+                    image_data.append(image)
+
+    return image_data
+
+# Load and preprocess training data
+train_directory = r"C:/NewML/MachineLearning/env/archive/weapon_detection/train/images"
+image_width = 100
+image_height = 100
+training_data = load_and_preprocess_images(train_directory, image_width, image_height)
+
+# Flatten and convert training_data to a 2D array
+training_data = np.array(training_data)
+
+# Labels for the training data (1 for weapon, 0 for no weapon)
+num_weapon_images = len(training_data) // 2
+num_no_weapon_images = len(training_data) // 2
+training_labels = [1] * num_weapon_images + [0] * num_no_weapon_images
+print("Number of training images:", len(training_data))
+print("Shape of training_data:", np.shape(training_data))
+# Flatten each image and stack them together
+flattened_training_data = training_data.reshape(657, -1)
+
+# Create and train the HMM model
+model = hmm.MultinomialHMM(n_components=2)
+model.fit(flattened_training_data)
+
+
+import numpy as np
+import os
+
+def count_images_in_directory(directory):
+    return len([f for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))])
+
+test_directory = "C:/NewML/MachineLearning/env/archive/test/test"
+
+# Load and preprocess test data
+test_data = load_and_preprocess_images(test_directory, image_width, image_height)
+print("Number of test images:", len(test_data))
+# Count the number of weapon and no-weapon images in the test directory
+num_test_weapon_images = count_images_in_directory(os.path.join(test_directory, 'weapon'))
+num_test_no_weapon_images = count_images_in_directory(os.path.join(test_directory, 'no_weapon'))
+
+# Convert the list of images into a NumPy array
+test_data = np.array(test_data)
+
+# Flatten the test data
+flattened_test_data = test_data.reshape(len(test_data), -1)
+
+# Use the trained HMM model to predict labels for the test data
+predicted_labels = model.predict(flattened_test_data)
+
+# Define the true labels for the test data (1 for weapon, 0 for no weapon)
+true_labels = [1] * num_test_weapon_images + [0] * num_test_no_weapon_images
+
+# Calculate accuracy
+correct_predictions = sum(1 for true_label, predicted_label in zip(true_labels, predicted_labels) if true_label == predicted_label)
+total_predictions = len(true_labels)
+accuracy = correct_predictions / total_predictions
+
+print("Accuracy: {:.2f}%".format(accuracy * 100))
+test_perplexity = model.score(flattened_test_data)
+print("Test Perplexity:", test_perplexity)

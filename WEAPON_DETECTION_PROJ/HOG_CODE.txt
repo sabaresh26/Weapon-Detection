@@ -1,0 +1,100 @@
+import os
+import cv2
+import numpy as np
+from sklearn import model_selection
+from sklearn.linear_model import SGDClassifier
+from sklearn.utils import shuffle
+from sklearn.metrics import accuracy_score, hinge_loss
+
+# Define the path to your dataset.
+dataset_path = "C:/NewML/MachineLearning/env/archive/weapon_detection/data"
+
+# Prepare the data and labels.
+data = []  # List to store HOG features
+labels = []  # List to store corresponding labels (1 for weapons, 0 for non-weapons)
+
+# Loop through the images in the specified directory.
+for image_file in os.listdir(os.path.join(dataset_path, "images")):
+    if image_file.lower().endswith(('.jpg', '.png')):
+        image_path = os.path.join(dataset_path, "images", image_file)
+        label_path = os.path.join(dataset_path, "labels", f"{os.path.splitext(image_file)[0]}.txt")
+
+        # Load and preprocess the image.
+        image = cv2.imread(image_path)
+        if image is not None:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            image = cv2.resize(image, (64, 128))  # You can adjust the size as needed.
+
+            # Compute HOG features.
+            hog = cv2.HOGDescriptor()
+            features = hog.compute(image)
+
+            # Extract class label from the YOLO label file.
+            label = None
+            if os.path.exists(label_path):
+                with open(label_path, 'r') as label_file:
+                    # YOLO format: class x_center y_center width height
+                    # We extract the class (integer) from the label.
+                    label_content = label_file.read().strip().split()
+                    if label_content:
+                        label = int(float(label_content[0]))  # Convert to integer
+
+            # Ensure that at least one label is appended to the list.
+            if label is not None:
+                labels.append(label)
+                data.append(features)
+                print(f"Image: {image_file}, Label: {label}")
+
+# Convert lists to NumPy arrays for compatibility with scikit-learn.
+data = np.array(data)
+labels = np.array(labels)
+
+# Print the distribution of unique classes.
+unique_classes, class_counts = np.unique(labels, return_counts=True)
+print("Unique classes:", unique_classes)
+print("Class counts:", class_counts)
+
+# Check if you have a sufficient number of samples.
+if len(unique_classes) >= 2:
+    # Split the data into training and validation sets.
+    X_train, X_val, y_train, y_val = model_selection.train_test_split(data, labels, test_size=0.2, random_state=42)
+    
+    # Shuffle the data to ensure a random distribution.
+    X_train, y_train = shuffle(X_train, y_train, random_state=42)
+    X_val, y_val = shuffle(X_val, y_val, random_state=42)
+    
+    # Train a Stochastic Gradient Descent (SGD) classifier incrementally.
+    clf = SGDClassifier(loss='hinge', max_iter=1000, tol=1e-3, random_state=42)
+    batch_size = 32  # You can adjust the batch size as needed.
+    epochs = 10  # You can adjust the number of epochs as needed.
+    
+    # Initialize a list to store unique classes encountered during training.
+    unique_classes_encountered = []
+    
+    for epoch in range(epochs):
+        # Split the training data into batches.
+        for i in range(0, len(X_train), batch_size):
+            X_batch = X_train[i:i+batch_size]
+            y_batch = y_train[i:i+batch_size]
+            
+            # Update the list of unique classes.
+            unique_classes_encountered = list(set(unique_classes_encountered) | set(np.unique(y_batch)))
+            
+            # Partial fit on the batch using the updated list of unique classes.
+            clf.partial_fit(X_batch, y_batch, classes=unique_classes_encountered)
+        
+        # Calculate hinge loss on the training set.
+        train_probabilities = clf.decision_function(X_train)
+        train_loss = hinge_loss(y_train, train_probabilities)
+        
+        # Evaluate on the validation set.
+        val_predictions = clf.predict(X_val)
+        val_accuracy = accuracy_score(y_val, val_predictions)
+        
+        print(f"Epoch {epoch + 1}/{epochs} - Training Loss: {train_loss:.4f} - Validation Accuracy: {val_accuracy * 100:.2f}%")
+
+    # Evaluate the final classifier on the test data.
+    test_accuracy = clf.score(X_val, y_val) * 100
+    print(f"Final Test Accuracy: {test_accuracy:.2f}%")
+else:
+    print("Insufficient number of unique classes for splitting.")
